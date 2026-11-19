@@ -13,6 +13,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
+import { setOnSessionExpired } from "./api/client";
 import { AuthProvider } from "./hooks/useAuth";
 import { applyTheme, useSettings } from "./stores/settingsStore";
 
@@ -24,6 +25,10 @@ const queryClient = new QueryClient({
     queries: { refetchOnWindowFocus: false, retry: 1 },
   },
 });
+
+// When the refresh token is gone/expired, drop the cached user so the app
+// shows the login screen instead of a page full of 401 errors.
+setOnSessionExpired(() => queryClient.setQueryData(["me"], null));
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

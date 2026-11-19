@@ -27,6 +27,12 @@ versions carry fixes; the public API/UX is not yet considered stable.
 ### Fixed
 - Listing Mistral models while another provider was active sent no API key.
 - `docker-compose.yml` now passes the `MISTRAL_*` settings from `.env` to the API.
+- **Sessions no longer expire after 15 minutes.** The frontend never used the
+  refresh token, so once the access cookie expired every API call returned 401
+  until you logged in again. The API client now refreshes the session on a 401
+  (one shared refresh for concurrent requests, since refresh tokens rotate) and
+  replays the request; if the refresh token has expired too, the app returns to
+  the login screen.
 
 ## [0.33.0] - 2026-07-06
 
