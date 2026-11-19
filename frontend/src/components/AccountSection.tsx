@@ -164,7 +164,7 @@ export function AccountSection() {
         <h4 className="tf-account-h">Delete all data</h4>
         <p className="tf-settings-note">
           Permanently deletes all your metrics (sessions, keystrokes, per-key and
-          bigram stats) and your AI settings, including any stored Mistral API key.
+          bigram stats) and your AI settings, including any stored API keys.
           Your account and login are kept — you start fresh with empty stats. This
           cannot be undone.
         </p>

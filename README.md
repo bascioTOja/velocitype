@@ -44,12 +44,13 @@ ever sent to an external API unless you explicitly opt in.
   deterministic fallback if the model is unavailable.
 - **Board-shaped heatmap.** A Ferris/Corne heatmap coloured by how much each key
   holds you back, with locked keys shown until you unlock them.
-- **Local or EU-cloud coach.** Ollama by default; optional per-user Mistral (EU).
+- **Local or cloud coach.** Ollama by default; optional per-user Mistral (EU) or any
+  OpenAI-compatible endpoint (OpenRouter, Groq, LM Studio, vLLM …).
   Provider, model and even the coaching prompts are per-user settings.
 - **Your data, on your terms.** Sessions and stats live in your own Postgres and
   **sync across your browsers**; **Delete all data** (password-confirmed) really
   removes every row — sessions, keystrokes, per-key and bigram stats, provider
-  config (including any stored Mistral key) and prompt overrides.
+  config (including any stored API keys) and prompt overrides.
 - **Dashboard & trends.** Key stat cards, an "All Completed Sessions" chart
   (distinct keys, average and peak WPM, accuracy per session), a 30-day trend and
   your personal bests.
@@ -156,6 +157,26 @@ encrypted. Local stays the default.
 - To use an existing host Ollama instead of the bundled service, set
   `OLLAMA_BASE_URL=http://host.docker.internal:11434` (the host must listen on
   `0.0.0.0`, i.e. `OLLAMA_HOST=0.0.0.0 ollama serve`).
+
+### OpenAI-compatible providers (OpenRouter, Groq, LM Studio, vLLM …)
+
+**Settings → AI Provider → OpenAI-compatible** lets each user point the coach at
+any server that speaks the OpenAI `/chat/completions` API:
+
+| Provider | Base URL | API key |
+|---|---|---|
+| OpenRouter | `https://openrouter.ai/api/v1` | required |
+| OpenAI | `https://api.openai.com/v1` | required |
+| Groq | `https://api.groq.com/openai/v1` | required |
+| LM Studio on the Docker host | `http://host.docker.internal:1234/v1` | — |
+| vLLM / llama.cpp / LiteLLM on the host | `http://host.docker.internal:8000/v1` | optional |
+
+Enter the **base URL** (the part before `/chat/completions`), an optional API key
+(stored encrypted, never returned) and a model id — **Load models** fetches the
+endpoint's `/models` list for autocomplete (e.g. `meta-llama/llama-3.3-70b-instruct`
+on OpenRouter). Calls are made server-side only. On a public multi-user
+deployment set `OPENAI_COMPAT_ALLOW_PRIVATE_HOSTS=false` so users can't make the
+server call internal addresses.
 
 Endpoints (session-authenticated): `GET /api/coach/status`,
 `POST /api/coach/analyze`, `POST /api/coach/drill` (accepts optional `focus_keys`

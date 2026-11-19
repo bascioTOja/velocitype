@@ -32,7 +32,7 @@ class CoachDrill(BaseModel):
     lesson: str
     word_count: int
     weak_keys: list[WeakKeyInfo]
-    source: str  # "ollama" | "fallback"
+    source: str  # provider name ("ollama" | "mistral" | "openai_compat") or "fallback"
 
 
 class CoachStatus(BaseModel):
@@ -43,22 +43,32 @@ class CoachStatus(BaseModel):
 
 
 class AiConfig(BaseModel):
-    """The user's AI provider config. The Mistral key is never returned; only
-    whether one is stored."""
+    """The user's AI provider config. API keys are never returned; only whether
+    one is stored."""
     provider: str
     ollama_model: str
     mistral_model: str
     mistral_key_set: bool
     ollama_default: str
     mistral_default: str
+    openai_base_url: str = ""
+    openai_model: str = ""
+    openai_key_set: bool = False
+    openai_default_base_url: str = ""
+    openai_default_model: str = ""
 
 
 class AiConfigUpdate(BaseModel):
-    provider: Literal["ollama", "mistral"] | None = None
+    provider: Literal["ollama", "mistral", "openai_compat"] | None = None
     ollama_model: str | None = Field(default=None, max_length=128)
     mistral_model: str | None = Field(default=None, max_length=128)
     # null = leave unchanged, "" = clear the stored key, non-empty = set it.
     mistral_api_key: str | None = Field(default=None, max_length=256)
+    # OpenAI-compatible: "" clears the base URL / model back to the defaults.
+    openai_base_url: str | None = Field(default=None, max_length=512)
+    openai_model: str | None = Field(default=None, max_length=256)
+    # null = leave unchanged, "" = clear the stored key, non-empty = set it.
+    openai_api_key: str | None = Field(default=None, max_length=512)
 
 
 class ModelList(BaseModel):

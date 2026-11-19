@@ -9,6 +9,21 @@ versions carry fixes; the public API/UX is not yet considered stable.
 
 ## [Unreleased]
 
+### Added
+- **OpenAI-compatible AI provider.** Settings → AI Provider gains a third option
+  that works with any `/chat/completions`-compatible endpoint — OpenRouter, OpenAI,
+  Groq, or self-hosted LM Studio / vLLM / llama.cpp / LiteLLM. Per user: base URL
+  (with one-click presets), optional API key (stored encrypted, never returned)
+  and a model id with autocomplete from the endpoint's `/models` list. Calls are
+  server-side only; `<think>` blocks from reasoning models are stripped.
+- `OPENAI_COMPAT_*` settings (default base URL/model, timeout, and
+  `OPENAI_COMPAT_ALLOW_PRIVATE_HOSTS` to block private-network URLs on public
+  deployments). Migration `0008_openai_compat` adds the per-user columns.
+
+### Fixed
+- Listing Mistral models while another provider was active sent no API key.
+- `docker-compose.yml` now passes the `MISTRAL_*` settings from `.env` to the API.
+
 ## [0.33.0] - 2026-07-06
 
 ### Added

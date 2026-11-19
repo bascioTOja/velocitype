@@ -45,9 +45,19 @@ services:
       COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-15}
       REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-30}
-      # Local LLM coaching (Ollama). No external LLM API is used.
+      # Local LLM coaching (Ollama) is the default. Cloud / OpenAI-compatible
+      # providers are opt-in per user in Settings (keys stored encrypted).
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.5:4b}
+      MISTRAL_BASE_URL: ${MISTRAL_BASE_URL:-https://api.mistral.ai}
+      MISTRAL_DEFAULT_MODEL: ${MISTRAL_DEFAULT_MODEL:-mistral-small-latest}
+      OPENAI_COMPAT_DEFAULT_BASE_URL: ${OPENAI_COMPAT_DEFAULT_BASE_URL:-https://openrouter.ai/api/v1}
+      OPENAI_COMPAT_DEFAULT_MODEL: ${OPENAI_COMPAT_DEFAULT_MODEL:-}
+      OPENAI_COMPAT_ALLOW_PRIVATE_HOSTS: ${OPENAI_COMPAT_ALLOW_PRIVATE_HOSTS:-true}
+    # Lets an OpenAI-compatible base URL reach a server on the Docker host
+    # (LM Studio, vLLM …) via http://host.docker.internal:<port>/v1 on Linux too.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     secrets: [jwt_private, jwt_public]
     depends_on:
       db:

@@ -115,3 +115,74 @@ async def test_ai_config_requires_auth(client):
     assert (await client.get("/api/coach/config")).status_code == 401
     assert (await client.get("/api/coach/models")).status_code == 401
     assert (await client.post("/api/coach/models/pull", json={"name": "x"})).status_code == 401
+
+
+async def test_openai_compat_config_roundtrip(client, unique_user):
+    await _register(client, unique_user)
+    body = (await client.get("/api/coach/config")).json()
+    assert body["openai_key_set"] is False
+    assert body["openai_base_url"] == body["openai_default_base_url"]
+
+    saved = await client.put(
+        "/api/coach/config",
+        json={
+            "provider": "openai_compat",
+            "openai_base_url": "https://openrouter.ai/api/v1/chat/completions/",
+            "openai_model": "meta-llama/llama-3.3-70b-instruct",
+            "openai_api_key": "sk-or-secret",
+        },
+    )
+    assert saved.status_code == 200
+    out = saved.json()
+    assert out["provider"] == "openai_compat"
+    assert out["openai_base_url"] == "https://openrouter.ai/api/v1"
+    assert out["openai_model"] == "meta-llama/llama-3.3-70b-instruct"
+    assert out["openai_key_set"] is True
+    assert "sk-or-secret" not in saved.text
+
+    cleared = await client.put("/api/coach/config", json={"openai_api_key": ""})
+    assert cleared.json()["openai_key_set"] is False
+
+
+async def test_openai_compat_rejects_invalid_base_url(client, unique_user):
+    await _register(client, unique_user)
+    resp = await client.put("/api/coach/config", json={"openai_base_url": "file:///etc/passwd"})
+    assert resp.status_code == 422
+
+
+async def test_analyze_uses_openai_compat(client, unique_user, monkeypatch):
+    from app.services import openai_compat
+
+    await _register(client, unique_user)
+    await client.put(
+        "/api/coach/config",
+        json={
+            "provider": "openai_compat",
+            "openai_base_url": "https://openrouter.ai/api/v1",
+            "openai_model": "openai/gpt-4o-mini",
+            "openai_api_key": "sk-or-live",
+        },
+    )
+    captured = {}
+
+    async def fake_gen(prompt, system=None, *, base_url, model, api_key, max_tokens):
+        captured.update(base_url=base_url, model=model, api_key=api_key)
+        return "Router says: nice work."
+
+    monkeypatch.setattr(openai_compat, "generate", fake_gen)
+    resp = await client.post("/api/coach/analyze")
+    assert resp.status_code == 200
+    assert resp.json()["analysis"] == "Router says: nice work."
+    assert resp.json()["model"] == "openai/gpt-4o-mini"
+    assert captured == {
+        "base_url": "https://openrouter.ai/api/v1",
+        "model": "openai/gpt-4o-mini",
+        "api_key": "sk-or-live",
+    }
+
+
+async def test_analyze_openai_compat_without_model_returns_422(client, unique_user):
+    await _register(client, unique_user)
+    await client.put("/api/coach/config", json={"provider": "openai_compat"})
+    resp = await client.post("/api/coach/analyze")
+    assert resp.status_code == 422

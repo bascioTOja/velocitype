@@ -223,7 +223,7 @@ export interface CoachStatus {
   model_ready: boolean;
 }
 
-export type AiProvider = "ollama" | "mistral";
+export type AiProvider = "ollama" | "mistral" | "openai_compat";
 
 export interface AiConfig {
   provider: AiProvider;
@@ -232,6 +232,11 @@ export interface AiConfig {
   mistral_key_set: boolean;
   ollama_default: string;
   mistral_default: string;
+  openai_base_url: string;
+  openai_model: string;
+  openai_key_set: boolean;
+  openai_default_base_url: string;
+  openai_default_model: string;
 }
 
 export interface AiConfigUpdate {
@@ -240,6 +245,10 @@ export interface AiConfigUpdate {
   mistral_model?: string;
   // null = leave unchanged, "" = clear, non-empty = set
   mistral_api_key?: string | null;
+  openai_base_url?: string;
+  openai_model?: string;
+  // null = leave unchanged, "" = clear, non-empty = set
+  openai_api_key?: string | null;
 }
 
 export interface ModelList {
@@ -271,7 +280,7 @@ export interface CoachDrill {
   lesson: string;
   word_count: number;
   weak_keys: WeakKeyInfo[];
-  source: string; // provider name ("ollama" | "mistral") or "fallback"
+  source: string; // provider name ("ollama" | "mistral" | "openai_compat") or "fallback"
 }
 
 export interface PromptSet {

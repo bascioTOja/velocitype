@@ -1,7 +1,9 @@
-"""Coach router: local-LLM (Ollama) coaching — analysis + drill generation.
+"""Coach router: LLM coaching — analysis + drill generation.
 
-Session-authenticated. Runs inference against the self-hosted Ollama service; no
-external LLM API is used.
+Session-authenticated. Runs inference against the user's chosen provider: the
+self-hosted Ollama service (default), Mistral (EU cloud), or any
+OpenAI-compatible endpoint (OpenRouter, LM Studio, vLLM …). Cloud calls are made
+server-side only.
 """
 from __future__ import annotations
 
@@ -36,8 +38,8 @@ from app.schemas.coach import (
     PullRequest,
     PullStatus,
 )
-from app.services import coach, crypto, llm, ollama
-from app.services.llm import LLMError
+from app.services import coach, crypto, llm, ollama, openai_compat
+from app.services.llm import LLMConfigError, LLMError
 from app.services.mcp import build_summary
 
 _settings = get_settings()
@@ -54,12 +56,12 @@ def _require_layout(layout_id: str) -> None:
 
 def _coach_error(exc: LLMError) -> ProblemException:
     msg = str(exc)
-    # A missing cloud key is a user-config problem, not a transient outage.
-    if "api key" in msg.lower():
+    # A missing key / base URL / model is a user-config problem, not an outage.
+    if isinstance(exc, LLMConfigError) or "api key" in msg.lower():
         return ProblemException(
             status_code=422,
             title="Unprocessable Entity",
-            detail="Set your Mistral API key in Settings → AI Provider.",
+            detail=f"{msg} Fix it in Settings → AI Provider.",
             type_="about:coach-no-key",
         )
     return ProblemException(
@@ -92,6 +94,17 @@ async def _get_ai_config(db: AsyncSession, user: User) -> AiConfig:
         mistral_key_set=bool(row and row.mistral_api_key_enc),
         ollama_default=_settings.ollama_model,
         mistral_default=_settings.mistral_default_model,
+        openai_base_url=(
+            row.openai_base_url if row and row.openai_base_url
+            else _settings.openai_compat_default_base_url
+        ),
+        openai_model=(
+            row.openai_model if row and row.openai_model
+            else _settings.openai_compat_default_model
+        ),
+        openai_key_set=bool(row and row.openai_api_key_enc),
+        openai_default_base_url=_settings.openai_compat_default_base_url,
+        openai_default_model=_settings.openai_compat_default_model,
     )
 
 
@@ -126,6 +139,23 @@ async def put_config(
         row.mistral_api_key_enc = (
             crypto.encrypt(payload.mistral_api_key) if payload.mistral_api_key else None
         )
+    if payload.openai_base_url is not None:
+        if payload.openai_base_url.strip():
+            try:
+                row.openai_base_url = openai_compat.validate_base_url(payload.openai_base_url)
+            except openai_compat.OpenAICompatConfigError as exc:
+                raise ProblemException(
+                    status_code=422, title="Unprocessable Entity",
+                    detail=str(exc), type_="about:invalid-base-url",
+                ) from exc
+        else:
+            row.openai_base_url = None
+    if payload.openai_model is not None:
+        row.openai_model = payload.openai_model.strip() or None
+    if payload.openai_api_key is not None:
+        row.openai_api_key_enc = (
+            crypto.encrypt(payload.openai_api_key) if payload.openai_api_key else None
+        )
     await db.commit()
     return await _get_ai_config(db, user)
 
@@ -139,10 +169,19 @@ async def list_models(
     """Available models for a provider (defaults to the user's active provider)."""
     cfg = await coach.get_ai_config(db, user.id)
     if provider in llm.PROVIDERS and provider != cfg.provider:
-        # Listing a provider that isn't the active one (e.g. previewing Mistral
-        # models): reuse the stored key for Mistral.
+        # Listing a provider that isn't the active one (e.g. previewing models
+        # before switching): reuse that provider's stored settings.
+        row = (
+            await db.execute(select(UserAiConfig).where(UserAiConfig.user_id == user.id))
+        ).scalar_one_or_none()
         if provider == llm.MISTRAL:
-            cfg = llm.LLMConfig(provider=llm.MISTRAL, model=cfg.model, api_key=cfg.api_key)
+            key = (
+                crypto.decrypt(row.mistral_api_key_enc)
+                if row and row.mistral_api_key_enc else None
+            )
+            cfg = llm.LLMConfig(provider=llm.MISTRAL, model=_settings.mistral_default_model, api_key=key)
+        elif provider == llm.OPENAI_COMPAT:
+            cfg = coach.openai_compat_config(row)
         else:
             cfg = llm.LLMConfig(provider=llm.OLLAMA, model=_settings.ollama_model)
     result = await llm.list_models(cfg)

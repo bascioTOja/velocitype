@@ -86,6 +86,18 @@ async def get_effective_prompts(db: AsyncSession, user_id) -> dict[str, str]:
     return out
 
 
+def openai_compat_config(row: UserAiConfig | None) -> llm.LLMConfig:
+    """The OpenAI-compatible config for a stored row (defaults applied)."""
+    return llm.LLMConfig(
+        provider=llm.OPENAI_COMPAT,
+        model=(row.openai_model if row else None) or _settings.openai_compat_default_model,
+        api_key=(
+            crypto.decrypt(row.openai_api_key_enc) if row and row.openai_api_key_enc else None
+        ),
+        base_url=(row.openai_base_url if row else None) or _settings.openai_compat_default_base_url,
+    )
+
+
 async def get_ai_config(db: AsyncSession, user_id) -> llm.LLMConfig:
     """Resolve the user's provider/model/key, applying deployment defaults."""
     row = (
@@ -100,7 +112,9 @@ async def get_ai_config(db: AsyncSession, user_id) -> llm.LLMConfig:
             else None
         )
         return llm.LLMConfig(provider=llm.MISTRAL, model=model, api_key=api_key)
-    model = (row.ollama_model if row else None) or _settings.ollama_model
+    if provider == llm.OPENAI_COMPAT:
+        return openai_compat_config(row)
+    model =(row.ollama_model if row else None) or _settings.ollama_model
     return llm.LLMConfig(provider=llm.OLLAMA, model=model)
 
 

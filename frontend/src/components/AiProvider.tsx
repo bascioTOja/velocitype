@@ -12,6 +12,16 @@ const MISTRAL_MODELS: { value: string; label: string }[] = [
   { value: "mistral-medium-latest", label: "Mistral Medium 3.5" },
 ];
 
+// Quick-fill presets for the OpenAI-compatible provider (base URL in the
+// OpenAI-SDK form; /chat/completions and /models are appended server-side).
+const OPENAI_PRESETS: { label: string; url: string; cloud: boolean }[] = [
+  { label: "OpenRouter", url: "https://openrouter.ai/api/v1", cloud: true },
+  { label: "OpenAI", url: "https://api.openai.com/v1", cloud: true },
+  { label: "Groq", url: "https://api.groq.com/openai/v1", cloud: true },
+  { label: "LM Studio (host)", url: "http://host.docker.internal:1234/v1", cloud: false },
+  { label: "vLLM / llama.cpp (host)", url: "http://host.docker.internal:8000/v1", cloud: false },
+];
+
 // Ensure the currently-selected value is always an option, even if listing failed.
 function withCurrent(list: string[], current: string): string[] {
   return list.includes(current) ? list : [current, ...list];
@@ -33,6 +43,10 @@ export function AiProvider() {
   const [mistralModel, setMistralModel] = useState("");
   const [keyInput, setKeyInput] = useState("");
   const [keyDirty, setKeyDirty] = useState(false);
+  const [openaiUrl, setOpenaiUrl] = useState("");
+  const [openaiModel, setOpenaiModel] = useState("");
+  const [openaiKeyInput, setOpenaiKeyInput] = useState("");
+  const [openaiKeyDirty, setOpenaiKeyDirty] = useState(false);
   const [pullName, setPullName] = useState("");
   const [pulling, setPulling] = useState<string | null>(null);
 
@@ -41,9 +55,12 @@ export function AiProvider() {
     setProvider(config.data.provider);
     setOllamaModel(config.data.ollama_model);
     setMistralModel(config.data.mistral_model);
+    setOpenaiUrl(config.data.openai_base_url);
+    setOpenaiModel(config.data.openai_model);
   }, [config.data]);
 
   const keySet = config.data?.mistral_key_set ?? false;
+  const openaiKeySet = config.data?.openai_key_set ?? false;
 
   // Only Ollama needs a dynamic model list (installed models). Mistral uses a
   // curated two-model dropdown.
@@ -53,19 +70,43 @@ export function AiProvider() {
     enabled: !!config.data && provider === "ollama",
   });
 
+  // OpenAI-compatible: list models from the *saved* endpoint (the server holds
+  // the key). Invalidated after each save so a new URL/key takes effect.
+  const openaiModels = useQuery({
+    queryKey: ["coach", "models", "openai_compat"],
+    queryFn: () => coachApi.listModels("openai_compat"),
+    enabled: !!config.data && provider === "openai_compat",
+    staleTime: 5 * 60_000,
+  });
+
   const save = useMutation({
     mutationFn: () =>
       coachApi.saveConfig({
         provider,
         ollama_model: ollamaModel,
         mistral_model: mistralModel,
+        openai_base_url: openaiUrl,
+        openai_model: openaiModel,
         ...(keyDirty ? { mistral_api_key: keyInput } : {}),
+        ...(openaiKeyDirty ? { openai_api_key: openaiKeyInput } : {}),
       }),
     onSuccess: (res) => {
       qc.setQueryData(["coach", "config"], res);
       qc.invalidateQueries({ queryKey: ["coach", "status"] });
+      qc.invalidateQueries({ queryKey: ["coach", "models", "openai_compat"] });
       setKeyInput("");
       setKeyDirty(false);
+      setOpenaiKeyInput("");
+      setOpenaiKeyDirty(false);
+    },
+  });
+
+  const clearOpenaiKey = useMutation({
+    mutationFn: () => coachApi.saveConfig({ openai_api_key: "" }),
+    onSuccess: (res) => {
+      qc.setQueryData(["coach", "config"], res);
+      qc.invalidateQueries({ queryKey: ["coach", "status"] });
+      qc.invalidateQueries({ queryKey: ["coach", "models", "openai_compat"] });
     },
   });
 
@@ -130,11 +171,23 @@ export function AiProvider() {
         >
           Mistral · Cloud (EU)
         </button>
+        <button
+          className={`tf-seg${provider === "openai_compat" ? " tf-seg--on" : ""}`}
+          onClick={() => setProvider("openai_compat")}
+        >
+          OpenAI-compatible
+        </button>
       </div>
 
       {provider === "ollama" ? (
         <p className="tf-provider-privacy tf-provider-privacy--good">
           🔒 Runs entirely on your machine — not a single byte leaves your host.
+        </p>
+      ) : provider === "openai_compat" ? (
+        <p className="tf-provider-privacy tf-provider-privacy--warn">
+          ☁️ Your stats &amp; prompts are sent to the endpoint below (e.g. OpenRouter
+          and whichever model host it routes to). Point it at a local server such as
+          LM Studio or vLLM to keep everything on your own hardware.
         </p>
       ) : (
         <p className="tf-provider-privacy tf-provider-privacy--warn">
@@ -194,6 +247,105 @@ export function AiProvider() {
             <p className="tf-prompt-hint">
               Downloads happen on the server and can take a while. Browse models at
               ollama.com/library.
+            </p>
+          </div>
+        </>
+      ) : provider === "openai_compat" ? (
+        <>
+          <div className="tf-field">
+            <label>Base URL</label>
+            <Input
+              value={openaiUrl}
+              onChange={(e) => setOpenaiUrl(e.target.value)}
+              placeholder={config.data.openai_default_base_url || "https://openrouter.ai/api/v1"}
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <div className="tf-preset-row">
+              {OPENAI_PRESETS.map((p) => (
+                <button
+                  key={p.url}
+                  type="button"
+                  className={`tf-preset${openaiUrl === p.url ? " tf-preset--on" : ""}`}
+                  onClick={() => setOpenaiUrl(p.url)}
+                  title={p.url}
+                >
+                  {p.cloud ? "☁️" : "🖥️"} {p.label}
+                </button>
+              ))}
+            </div>
+            <p className="tf-prompt-hint">
+              Any server implementing the OpenAI <code>/chat/completions</code> API. Enter
+              the base URL (usually ending in <code>/v1</code>), not the full endpoint.
+            </p>
+          </div>
+
+          <div className="tf-field">
+            <label>
+              API key {openaiKeySet && <span className="tf-key-set">· key set ••••</span>}
+            </label>
+            <div className="tf-pull-row">
+              <Input
+                type="password"
+                value={openaiKeyInput}
+                onChange={(e) => {
+                  setOpenaiKeyInput(e.target.value);
+                  setOpenaiKeyDirty(true);
+                }}
+                placeholder={
+                  openaiKeySet
+                    ? "Enter a new key to replace"
+                    : "Paste your API key (optional for local servers)"
+                }
+                autoComplete="off"
+              />
+              {openaiKeySet && (
+                <Button
+                  variant="danger"
+                  onClick={() => clearOpenaiKey.mutate()}
+                  disabled={clearOpenaiKey.isPending}
+                >
+                  Clear
+                </Button>
+              )}
+            </div>
+            <p className="tf-prompt-hint">Stored encrypted on the server and never shown again.</p>
+          </div>
+
+          <div className="tf-field">
+            <label>Model</label>
+            {openaiModels.data && !openaiModels.data.reachable && (
+              <Alert>
+                Couldn't list models from the saved endpoint. Check the URL and key,
+                then click Load models — or type a model id manually.
+              </Alert>
+            )}
+            <div className="tf-pull-row">
+              <Input
+                value={openaiModel}
+                onChange={(e) => setOpenaiModel(e.target.value)}
+                placeholder="e.g. meta-llama/llama-3.3-70b-instruct"
+                list="tf-openai-models"
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <Button
+                onClick={() => save.mutate()}
+                disabled={save.isPending || openaiModels.isFetching}
+                title="Save the URL/key and fetch the endpoint's model list"
+              >
+                {openaiModels.isFetching ? "Loading…" : "Load models"}
+              </Button>
+            </div>
+            <datalist id="tf-openai-models">
+              {(openaiModels.data?.models ?? []).map((m) => (
+                <option key={m} value={m} />
+              ))}
+            </datalist>
+            <p className="tf-prompt-hint">
+              {openaiModels.data?.reachable && openaiModels.data.models.length > 0
+                ? `${openaiModels.data.models.length} models available — start typing to filter.`
+                : "Type a model id, or click Load models to fetch the endpoint's list."}
             </p>
           </div>
         </>

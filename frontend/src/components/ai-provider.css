@@ -38,3 +38,27 @@
   font-weight: 600;
   font-size: 0.72rem;
 }
+
+.tf-preset-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.45rem;
+}
+.tf-preset {
+  font: inherit;
+  font-size: 0.74rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--text-muted) 35%, transparent);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.tf-preset:hover,
+.tf-preset--on {
+  color: var(--text-primary);
+}
+.tf-preset--on {
+  border-color: var(--correct);
+}

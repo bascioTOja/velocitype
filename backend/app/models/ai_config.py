@@ -24,6 +24,10 @@ class UserAiConfig(Base):
     ollama_model: Mapped[str | None] = mapped_column(String(128), nullable=True)
     mistral_model: Mapped[str | None] = mapped_column(String(128), nullable=True)
     mistral_api_key_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # OpenAI-compatible endpoint (OpenRouter, LM Studio, vLLM ...)
+    openai_base_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    openai_model: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    openai_api_key_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )

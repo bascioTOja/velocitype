@@ -59,6 +59,19 @@ class Settings(BaseSettings):
     mistral_default_model: str = Field(default="mistral-small-latest")
     mistral_timeout_s: float = Field(default=60.0)
 
+    # ── OpenAI-compatible (optional; OpenRouter, Groq, LM Studio, vLLM …) ───
+    # Base URL, model and (optional) API key are per-user, entered in Settings;
+    # the key is stored encrypted. These are only the pre-filled defaults.
+    openai_compat_default_base_url: str = Field(default="https://openrouter.ai/api/v1")
+    openai_compat_default_model: str = Field(default="")
+    openai_compat_timeout_s: float = Field(default=120.0)
+    # Allow base URLs that resolve to loopback/private addresses (needed for a
+    # host LM Studio / vLLM / LiteLLM). Set false on a multi-tenant public
+    # deployment to stop users pointing the server at internal services (SSRF).
+    openai_compat_allow_private_hosts: bool = Field(default=True)
+    # Sent as X-Title (OpenRouter shows it in its activity log). Empty = omit.
+    openai_compat_app_title: str = Field(default="Velocitype")
+
     @computed_field  # type: ignore[prop-decorator]
     @property
     def cors_origin_list(self) -> list[str]:

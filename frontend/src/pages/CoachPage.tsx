@@ -46,6 +46,7 @@ export function CoachPage() {
   const modelReady = status.data?.model_ready;
   const reachable = status.data?.reachable;
   const isMistral = status.data?.provider === "mistral";
+  const isOpenAI = status.data?.provider === "openai_compat";
 
   return (
     <div className="tf-coach">
@@ -129,7 +130,13 @@ export function CoachPage() {
       <Card>
         <h3 className="tf-card-title">AI Coach</h3>
         <p className="tf-settings-note">
-          {isMistral ? (
+          {isOpenAI ? (
+            <>
+              Coaching runs on your OpenAI-compatible endpoint
+              {status.data?.model ? ` (${status.data.model})` : ""} - your stats are
+              sent to that provider. Switch to local Ollama in Settings for full privacy.
+            </>
+          ) : isMistral ? (
             <>
               Coaching runs on Mistral (EU cloud)
               {status.data ? ` (${status.data.model})` : ""} — your stats are sent to
@@ -146,7 +153,12 @@ export function CoachPage() {
         {status.isLoading ? (
           <Spinner />
         ) : !reachable ? (
-          isMistral ? (
+          isOpenAI ? (
+            <Alert>
+              The OpenAI-compatible endpoint isn't reachable. Check the base URL,
+              API key and model in Settings → AI Provider.
+            </Alert>
+          ) : isMistral ? (
             <Alert>
               Mistral isn't reachable. Set a valid API key in Settings → AI Provider.
             </Alert>
@@ -155,6 +167,11 @@ export function CoachPage() {
               Local model server not reachable. Is the <code>ollama</code> service running?
             </Alert>
           )
+        ) : !modelReady && isOpenAI ? (
+          <Alert>
+            The endpoint doesn't list the model “{status.data?.model || "—"}”. Pick a
+            model from the list in Settings → AI Provider.
+          </Alert>
         ) : !modelReady ? (
           <div className="tf-coach-status">
             <Spinner />
