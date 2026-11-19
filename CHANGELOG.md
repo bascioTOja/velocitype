@@ -19,6 +19,10 @@ versions carry fixes; the public API/UX is not yet considered stable.
 - `OPENAI_COMPAT_*` settings (default base URL/model, timeout, and
   `OPENAI_COMPAT_ALLOW_PRIVATE_HOSTS` to block private-network URLs on public
   deployments). Migration `0008_openai_compat` adds the per-user columns.
+  User-facing errors carry only the HTTP status and a generic hint, never the
+  endpoint's response body (logged server-side), to prevent SSRF read-back.
+- Dev `docker-compose.override.yml` maps `host.docker.internal` (Linux) so a
+  host-local LM Studio / vLLM is reachable; production stays opt-in.
 
 ### Fixed
 - Listing Mistral models while another provider was active sent no API key.

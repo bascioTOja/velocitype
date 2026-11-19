@@ -8,6 +8,12 @@ services:
     environment:
       ENV: development
       COOKIE_SECURE: "false"
+    # Lets an OpenAI-compatible base URL reach a server on the Docker host
+    # (LM Studio, vLLM …) via http://host.docker.internal:<port>/v1. Docker
+    # Desktop (Windows/macOS) provides this name already; this adds it on Linux.
+    # Opt-in for production: copy this block into your own override.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./backend/app:/app/app:ro
       - ./backend/alembic:/app/alembic:ro

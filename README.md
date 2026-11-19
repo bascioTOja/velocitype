@@ -174,9 +174,17 @@ any server that speaks the OpenAI `/chat/completions` API:
 Enter the **base URL** (the part before `/chat/completions`), an optional API key
 (stored encrypted, never returned) and a model id — **Load models** fetches the
 endpoint's `/models` list for autocomplete (e.g. `meta-llama/llama-3.3-70b-instruct`
-on OpenRouter). Calls are made server-side only. On a public multi-user
-deployment set `OPENAI_COMPAT_ALLOW_PRIVATE_HOSTS=false` so users can't make the
-server call internal addresses.
+on OpenRouter). Calls are made server-side only.
+
+- **Reaching a server on the Docker host:** Docker Desktop (Windows/macOS)
+  resolves `host.docker.internal` out of the box. On Linux the dev
+  `docker-compose.override.yml` maps it via `extra_hosts: host-gateway`; for a
+  production stack add the same `extra_hosts` entry to the `api` service in your
+  own override if you need it.
+- **Security:** on a public multi-user deployment set
+  `OPENAI_COMPAT_ALLOW_PRIVATE_HOSTS=false` so users can't make the server call
+  internal addresses (db, redis, the host). Error messages shown to users never
+  include the endpoint's response body (it is only logged server-side).
 
 Endpoints (session-authenticated): `GET /api/coach/status`,
 `POST /api/coach/analyze`, `POST /api/coach/drill` (accepts optional `focus_keys`

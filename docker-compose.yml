@@ -54,10 +54,6 @@ services:
       OPENAI_COMPAT_DEFAULT_BASE_URL: ${OPENAI_COMPAT_DEFAULT_BASE_URL:-https://openrouter.ai/api/v1}
       OPENAI_COMPAT_DEFAULT_MODEL: ${OPENAI_COMPAT_DEFAULT_MODEL:-}
       OPENAI_COMPAT_ALLOW_PRIVATE_HOSTS: ${OPENAI_COMPAT_ALLOW_PRIVATE_HOSTS:-true}
-    # Lets an OpenAI-compatible base URL reach a server on the Docker host
-    # (LM Studio, vLLM …) via http://host.docker.internal:<port>/v1 on Linux too.
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     secrets: [jwt_private, jwt_public]
     depends_on:
       db:

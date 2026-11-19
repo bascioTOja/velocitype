@@ -7,10 +7,16 @@ LiteLLM proxy …). The user supplies the base URL in the standard OpenAI-SDK fo
 appended to it. The API key is optional (many local servers need none), per-user,
 stored encrypted, and passed here at call time. All requests originate from the
 API server, never the browser.
+
+Error messages raised here reach the end user (via the coach 422/503 detail), so
+they never include the endpoint's response body — only the HTTP status and a
+generic hint. Otherwise a user could point the base URL at an internal service
+and read its responses back (SSRF read). Bodies go to the server log instead.
 """
 from __future__ import annotations
 
 import ipaddress
+import logging
 import re
 import socket
 from urllib.parse import urlparse
@@ -20,6 +26,19 @@ import httpx
 from app.config import get_settings
 
 _settings = get_settings()
+_log = logging.getLogger(__name__)
+
+# User-facing hints per status (OpenAI / OpenRouter semantics). Deliberately
+# generic: the remote body is logged, never echoed.
+_STATUS_HINTS: dict[int, str] = {
+    400: "the request was rejected - check the model id",
+    402: "insufficient credits on the provider account",
+    404: "not found - check the base URL and model id",
+    408: "the endpoint timed out",
+    413: "the prompt is too large for this model",
+    422: "the request was rejected - check the model id",
+    429: "rate limited - try again shortly",
+}
 
 # Reasoning models (DeepSeek-R1, qwen3 …) served via some gateways leak a
 # <think>…</think> block into the content; strip it like the Ollama client does.
@@ -87,6 +106,29 @@ def _headers(api_key: str | None) -> dict[str, str]:
     return headers
 
 
+def _unreachable(exc: httpx.HTTPError) -> OpenAICompatError:
+    _log.warning("OpenAI-compatible endpoint unreachable: %r", exc)
+    if isinstance(exc, httpx.TimeoutException):
+        return OpenAICompatError("Endpoint timed out.")
+    return OpenAICompatError("Endpoint unreachable.")
+
+
+def _http_error(resp: httpx.Response) -> OpenAICompatError:
+    """Map a non-200 response to a user-safe error; log the body server-side."""
+    _log.warning(
+        "OpenAI-compatible endpoint %s returned %s: %s",
+        resp.request.url, resp.status_code, resp.text[:500],
+    )
+    if resp.status_code in (401, 403):
+        return OpenAICompatConfigError(
+            f"Endpoint rejected the API key ({resp.status_code}). Check your API key."
+        )
+    hint = _STATUS_HINTS.get(resp.status_code) or (
+        "provider error" if resp.status_code >= 500 else "unexpected status"
+    )
+    return OpenAICompatError(f"Endpoint returned {resp.status_code}: {hint}.")
+
+
 def _clean(text: str) -> str:
     return _THINK_RE.sub("", text).strip()
 
@@ -121,22 +163,20 @@ async def generate(
                 f"{url}/chat/completions", json=payload, headers=_headers(api_key)
             )
     except httpx.HTTPError as exc:
-        raise OpenAICompatError(f"Endpoint unreachable: {exc}") from exc
+        raise _unreachable(exc) from exc
 
-    if resp.status_code in (401, 403):
-        raise OpenAICompatConfigError(
-            f"Endpoint rejected the API key ({resp.status_code}). Check your API key."
-        )
     if resp.status_code != 200:
-        raise OpenAICompatError(f"Endpoint returned {resp.status_code}: {resp.text[:200]}")
+        raise _http_error(resp)
 
     try:
         data = resp.json()
         if data.get("error"):  # some gateways return 200 with an error body
-            raise OpenAICompatError(f"Endpoint error: {str(data['error'])[:200]}")
+            _log.warning("OpenAI-compatible endpoint returned an error body: %s", resp.text[:500])
+            raise OpenAICompatError("Endpoint returned an error — see server logs.")
         content = data["choices"][0]["message"].get("content") or ""
     except (KeyError, IndexError, ValueError, TypeError, AttributeError) as exc:
-        raise OpenAICompatError(f"Unexpected response: {exc}") from exc
+        _log.warning("Unexpected OpenAI-compatible response: %s", resp.text[:500])
+        raise OpenAICompatError("Endpoint returned a response that isn't OpenAI-compatible.") from exc
     text = _clean(content if isinstance(content, str) else "")
     if not text:
         raise OpenAICompatError("Endpoint returned an empty response.")
@@ -150,15 +190,16 @@ async def list_models(base_url: str, api_key: str | None = None) -> list[str]:
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.get(f"{url}/models", headers=_headers(api_key))
     except httpx.HTTPError as exc:
-        raise OpenAICompatError(f"Endpoint unreachable: {exc}") from exc
+        raise _unreachable(exc) from exc
     if resp.status_code != 200:
-        raise OpenAICompatError(f"Endpoint returned {resp.status_code}: {resp.text[:200]}")
+        raise _http_error(resp)
     try:
         data = resp.json()
         items = data.get("data", []) if isinstance(data, dict) else data
         ids = [m.get("id", "") for m in items if isinstance(m, dict) and m.get("id")]
     except (ValueError, AttributeError, TypeError) as exc:
-        raise OpenAICompatError(f"Unexpected response: {exc}") from exc
+        _log.warning("Unexpected OpenAI-compatible /models response: %s", resp.text[:500])
+        raise OpenAICompatError("Endpoint returned a response that isn't OpenAI-compatible.") from exc
     return sorted(ids)
 
 

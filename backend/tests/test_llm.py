@@ -175,3 +175,24 @@ async def test_openai_compat_list_models_and_status(monkeypatch):
     st = await llm.status(cfg)
     assert st["provider"] == llm.OPENAI_COMPAT
     assert st["reachable"] is True and st["model_ready"] is True
+
+
+async def test_openai_compat_error_never_echoes_response_body(monkeypatch):
+    secret = "INTERNAL-ADMIN-PANEL-SECRET"
+    _mock_httpx(monkeypatch, lambda r: httpx.Response(500, text=secret))
+    with pytest.raises(openai_compat.OpenAICompatError) as ei:
+        await openai_compat.generate(
+            "p", base_url="http://internal.example/v1", model="m"
+        )
+    assert secret not in str(ei.value)
+    assert "500" in str(ei.value)
+
+    _mock_httpx(monkeypatch, lambda r: httpx.Response(200, json={"error": secret}))
+    with pytest.raises(openai_compat.OpenAICompatError) as ei:
+        await openai_compat.generate("p", base_url="http://internal.example/v1", model="m")
+    assert secret not in str(ei.value)
+
+    _mock_httpx(monkeypatch, lambda r: httpx.Response(200, text=secret))
+    with pytest.raises(openai_compat.OpenAICompatError) as ei:
+        await openai_compat.list_models("http://internal.example/v1")
+    assert secret not in str(ei.value)
