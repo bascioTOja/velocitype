@@ -236,6 +236,41 @@ async def test_prompts_defaults_then_override(client, unique_user):
     assert cleared.json()["custom"]["analysis_system"] is None
 
 
+async def test_prompt_max_tokens_override(client, unique_user):
+    await _register(client, unique_user)
+    body = (await client.get("/api/coach/prompts")).json()
+    assert body["defaults"]["analysis_max_tokens"] == 280
+    assert body["defaults"]["drill_max_tokens"] == 220
+    assert body["custom"]["analysis_max_tokens"] is None
+
+    saved = await client.put("/api/coach/prompts", json={"analysis_max_tokens": 2000})
+    assert saved.status_code == 200
+    assert saved.json()["custom"]["analysis_max_tokens"] == 2000
+    assert saved.json()["custom"]["drill_max_tokens"] is None
+
+    for bad in (0, 15, 100000):
+        resp = await client.put("/api/coach/prompts", json={"drill_max_tokens": bad})
+        assert resp.status_code == 422
+
+    cleared = await client.put("/api/coach/prompts", json={})
+    assert cleared.json()["custom"]["analysis_max_tokens"] is None
+
+
+async def test_custom_max_tokens_is_used_in_analyze(client, unique_user, monkeypatch):
+    await _register(client, unique_user)
+    await client.put("/api/coach/prompts", json={"analysis_max_tokens": 2000})
+    captured = {}
+
+    async def capture(prompt, system=None, *, model=None, num_predict=300):
+        captured["num_predict"] = num_predict
+        return "ok"
+
+    monkeypatch.setattr(ollama, "generate", capture)
+    resp = await client.post("/api/coach/analyze")
+    assert resp.status_code == 200
+    assert captured["num_predict"] == 2000
+
+
 async def test_custom_prompt_is_used_in_analyze(client, unique_user, monkeypatch):
     await _register(client, unique_user)
     await client.put(

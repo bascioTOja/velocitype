@@ -64,6 +64,11 @@ DRILL_USER = (
     "Output only the words."
 )
 
+# Default response caps — sized for CPU-only Ollama latency. Reasoning models on
+# cloud providers spend tokens "thinking" first and may need far more (~1500+).
+ANALYZE_MAX_TOKENS = 280
+DRILL_MAX_TOKENS = 220
+
 DEFAULT_PROMPTS: dict[str, str] = {
     "analysis_system": ANALYZE_SYSTEM,
     "analysis_user": ANALYZE_USER,
@@ -71,18 +76,40 @@ DEFAULT_PROMPTS: dict[str, str] = {
     "drill_user": DRILL_USER,
 }
 
+# Per task (system + instruction share one LLM call). Stored per user in
+# user_prompts.<task>_max_tokens.
+DEFAULT_MAX_TOKENS: dict[str, int] = {
+    "analysis": ANALYZE_MAX_TOKENS,
+    "drill": DRILL_MAX_TOKENS,
+}
 
-async def get_effective_prompts(db: AsyncSession, user_id) -> dict[str, str]:
-    """Return the 4 prompts to use — the user's override where set, else default."""
-    row = (
+
+async def get_prompt_overrides(db: AsyncSession, user_id) -> UserPrompt | None:
+    """The user's stored prompt / token-cap overrides, if any."""
+    return (
         await db.execute(select(UserPrompt).where(UserPrompt.user_id == user_id))
     ).scalar_one_or_none()
+
+
+def effective_prompts(row: UserPrompt | None) -> dict[str, str]:
+    """The 4 prompts to use — the user's override where set, else default."""
     out = dict(DEFAULT_PROMPTS)
     if row is not None:
         for key in out:
             val = getattr(row, key)
             if val:  # non-empty override
                 out[key] = val
+    return out
+
+
+def effective_max_tokens(row: UserPrompt | None) -> dict[str, int]:
+    """Response caps per task — the user's override where set, else default."""
+    out = dict(DEFAULT_MAX_TOKENS)
+    if row is not None:
+        for task in out:
+            val = getattr(row, f"{task}_max_tokens")
+            if val:  # non-null override
+                out[task] = val
     return out
 
 
@@ -167,14 +194,16 @@ async def ngram_summary(db: AsyncSession, user_id, layout_id: str) -> dict:
 async def analyze(db: AsyncSession, user: User, layout_id: str) -> tuple[str, str]:
     """Return (analysis text, model used) for the user's active provider."""
     cfg = await get_ai_config(db, user.id)
-    prompts = await get_effective_prompts(db, user.id)
+    overrides = await get_prompt_overrides(db, user.id)
+    prompts = effective_prompts(overrides)
+    max_tokens = effective_max_tokens(overrides)
     summary = await build_summary(db, user, layout_id)
     data_obj = summary.model_dump(mode="json")
     data_obj.update(await ngram_summary(db, user.id, layout_id))
     data = json.dumps(data_obj, ensure_ascii=False)
     user_prompt = _inject(prompts["analysis_user"], "{{data}}", data)
     text = await llm.generate(
-        cfg, user_prompt, system=prompts["analysis_system"], max_tokens=280
+        cfg, user_prompt, system=prompts["analysis_system"], max_tokens=max_tokens["analysis"],
     )
     return text, cfg.model
 
@@ -223,7 +252,7 @@ def _sanitize_lesson(raw: str, allowed_letters: set[str], min_words: int) -> str
         if not w or not any(c.isalpha() for c in w):
             continue
         # Reject words using letters outside the active layout.
-        if not all((c in allowed_letters) for c in w if c.isalpha()):
+        if any(c not in allowed_letters for c in w if c.isalpha()):
             continue
         if len(w) > 20:
             continue
@@ -371,7 +400,9 @@ async def drill(
 
     unlocked_chars = sorted(c for c in unlocked if len(c) == 1)
     allowed_letters = {c for c in unlocked_chars if c.isalpha()}
-    prompts = await get_effective_prompts(db, user.id)
+    overrides = await get_prompt_overrides(db, user.id)
+    prompts = effective_prompts(overrides)
+    max_tokens = effective_max_tokens(overrides)
     prompt = _inject(prompts["drill_user"], "{{focus}}", focus)
     # Hard constraint so the model never emits a not-yet-unlocked key.
     prompt += f"\n\nUse ONLY these letters (plus spaces): {' '.join(unlocked_chars)}."
@@ -391,7 +422,7 @@ async def drill(
     for _ in range(3):
         try:
             raw = await llm.generate(
-                cfg, prompt, system=prompts["drill_system"], max_tokens=220
+                cfg, prompt, system=prompts["drill_system"], max_tokens=max_tokens["drill"],
             )
         except llm.LLMError:
             break

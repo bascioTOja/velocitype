@@ -23,6 +23,11 @@ versions carry fixes; the public API/UX is not yet considered stable.
   endpoint's response body (logged server-side), to prevent SSRF read-back.
 - Dev `docker-compose.override.yml` maps `host.docker.internal` (Linux) so a
   host-local LM Studio / vLLM is reachable; production stays opt-in.
+- **Configurable response length per prompt.** Settings → AI Settings gains
+  "max response tokens" for analysis (default 280) and drill (default 220),
+  128–32768, stored per user (migration `0009_prompt_max_tokens`). Raise it for
+  reasoning models, which otherwise spend the whole budget "thinking" and return
+  an empty reply.
 
 ### Fixed
 - Listing Mistral models while another provider was active sent no API key.

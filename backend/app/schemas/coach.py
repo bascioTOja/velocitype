@@ -9,6 +9,8 @@ from app.schemas.mcp import McpSummary
 from app.schemas.session import WeakKeyInfo
 
 _MAX_PROMPT = 8000
+_MIN_TOKENS = 128
+_MAX_TOKENS = 32768
 
 
 class CoachMetricsResponse(McpSummary):
@@ -105,15 +107,19 @@ class PullStatus(BaseModel):
 class PromptSet(BaseModel):
     analysis_system: str
     analysis_user: str
+    analysis_max_tokens: int
     drill_system: str
     drill_user: str
+    drill_max_tokens: int
 
 
 class PromptCustom(BaseModel):
     analysis_system: str | None = None
     analysis_user: str | None = None
+    analysis_max_tokens: int | None = None
     drill_system: str | None = None
     drill_user: str | None = None
+    drill_max_tokens: int | None = None
 
 
 class CoachPrompts(BaseModel):
@@ -128,3 +134,6 @@ class CoachPromptsUpdate(BaseModel):
     analysis_user: str | None = Field(default=None, max_length=_MAX_PROMPT)
     drill_system: str | None = Field(default=None, max_length=_MAX_PROMPT)
     drill_user: str | None = Field(default=None, max_length=_MAX_PROMPT)
+    # Null clears the override. Upper bound leaves room for reasoning tokens.
+    analysis_max_tokens: int | None = Field(default=None, ge=_MIN_TOKENS, le=_MAX_TOKENS)
+    drill_max_tokens: int | None = Field(default=None, ge=_MIN_TOKENS, le=_MAX_TOKENS)

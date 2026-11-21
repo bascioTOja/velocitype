@@ -286,20 +286,27 @@ export interface CoachDrill {
 export interface PromptSet {
   analysis_system: string;
   analysis_user: string;
+  analysis_max_tokens: number;
   drill_system: string;
   drill_user: string;
+  drill_max_tokens: number;
 }
 export interface PromptCustom {
   analysis_system: string | null;
   analysis_user: string | null;
+  analysis_max_tokens: number | null;
   drill_system: string | null;
   drill_user: string | null;
+  drill_max_tokens: number | null;
 }
 export interface CoachPrompts {
   defaults: PromptSet;
   custom: PromptCustom;
 }
-export type PromptKey = keyof PromptSet;
+/** Text prompt fields (textareas). */
+export type PromptKey = "analysis_system" | "analysis_user" | "drill_system" | "drill_user";
+/** Response-length caps (number inputs). */
+export type TokenKey = "analysis_max_tokens" | "drill_max_tokens";
 
 export interface CoachMetrics {
   user: string;

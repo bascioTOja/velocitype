@@ -221,10 +221,17 @@ async def get_prompts(
     custom = PromptCustom(
         analysis_system=row.analysis_system if row else None,
         analysis_user=row.analysis_user if row else None,
+        analysis_max_tokens=row.analysis_max_tokens if row else None,
         drill_system=row.drill_system if row else None,
         drill_user=row.drill_user if row else None,
+        drill_max_tokens=row.drill_max_tokens if row else None,
     )
-    return CoachPrompts(defaults=PromptSet(**coach.DEFAULT_PROMPTS), custom=custom)
+    defaults = PromptSet(
+        **coach.DEFAULT_PROMPTS,
+        analysis_max_tokens=coach.DEFAULT_MAX_TOKENS["analysis"],
+        drill_max_tokens=coach.DEFAULT_MAX_TOKENS["drill"],
+    )
+    return CoachPrompts(defaults=defaults, custom=custom)
 
 
 @router.put("/prompts", response_model=CoachPrompts)
@@ -245,6 +252,8 @@ async def put_prompts(
     row.analysis_user = payload.analysis_user or None
     row.drill_system = payload.drill_system or None
     row.drill_user = payload.drill_user or None
+    row.analysis_max_tokens = payload.analysis_max_tokens
+    row.drill_max_tokens = payload.drill_max_tokens
     await db.commit()
     return await get_prompts(db, user)
 
